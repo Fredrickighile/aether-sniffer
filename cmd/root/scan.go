@@ -14,6 +14,7 @@ import (
 	"github.com/fredthebuilder/aether-sniffer/internal/output"
 	"github.com/fredthebuilder/aether-sniffer/internal/scanners/secrets"
 	"github.com/fredthebuilder/aether-sniffer/internal/scanners/shadowai"
+	"github.com/fredthebuilder/aether-sniffer/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -132,9 +133,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 
 	case config.OutputTUI:
-		// TUI output is handled by the Bubble Tea dashboard.
-		// Phase 2 will implement this. For now, fall back to a clean summary.
-		printTerminalSummary(results, startedAt)
+    tuiResults := results
+    tuiStart := startedAt
+    err := tui.Run(targetPath, func() ([]engine.Result, time.Duration) {
+        return tuiResults, time.Since(tuiStart)
+    })
+    if err != nil {
+        return fmt.Errorf("TUI error: %w", err)
+    }
 
 	case config.OutputPDF:
 		fmt.Fprintln(os.Stderr, "PDF output coming in Phase 3. Using JSON for now.")

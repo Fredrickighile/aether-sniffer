@@ -6,7 +6,7 @@
 //   - Entropy scoring reduces false positives from generic patterns.
 //   - All regex patterns are compiled once at init() for performance.
 //   - File size is capped at MaxFileSizeBytes to prevent memory exhaustion.
-//   - Lockfiles and checksum files are always skipped (go.sum, package-lock.json, etc.)
+//   - Lockfiles, checksum files, and .git folders are always skipped.
 package secrets
 
 import (
@@ -103,6 +103,11 @@ func (s *Scanner) Scan(ctx context.Context) ([]engine.Finding, error) {
 			return nil
 		}
 
+		// Skip the entire .git directory tree — never scan it.
+		if d.IsDir() && isGitDir(path) {
+			return filepath.SkipDir
+		}
+
 		if d.IsDir() || ShouldSkipPath(path) {
 			return nil
 		}
@@ -169,21 +174,19 @@ func (s *Scanner) scanFile(path string) ([]engine.Finding, error) {
 	return findings, nil
 }
 
+// isGitDir returns true if the path is a .git directory.
+// Uses filepath.SkipDir to skip the entire .git tree — fastest approach.
+func isGitDir(path string) bool {
+	base := filepath.Base(path)
+	return base == ".git"
+}
+
 // ShouldSkipPath returns true for paths that never contain real secrets.
 // Exported so the shadowai scanner can reuse the same logic.
 func ShouldSkipPath(path string) bool {
-	// Directories that never contain secrets.
-	skipDirs := []string{
-		".git", "node_modules", "vendor", ".venv", "__pycache__",
-		".idea", ".vscode", "dist", "build", "target", ".terraform",
-	}
-
-	// File extensions that are binary or non-secret files.
-	skipExts := []string{
-		".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
-		".mp4", ".mp3", ".zip", ".tar", ".gz", ".exe", ".dll",
-		".pdf", ".woff", ".woff2", ".ttf", ".eot",
-	}
+	// Normalize to forward slashes for cross-platform safety (Windows uses \).
+	normalized := strings.ReplaceAll(strings.ToLower(path), "\\", "/")
+	base := filepath.Base(normalized)
 
 	// Specific filenames that cause false positives.
 	// These files contain hashes/checksums that look like secrets but never are.
@@ -192,28 +195,35 @@ func ShouldSkipPath(path string) bool {
 		"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "shrinkwrap.json",
 		"composer.lock", "gemfile.lock", "cargo.lock", "poetry.lock",
 	}
-
-	lower := strings.ToLower(path)
-	base := strings.ToLower(filepath.Base(path))
-
-	// Filename check first — cheapest operation.
 	for _, f := range skipFiles {
 		if base == f {
 			return true
 		}
 	}
 
-	// Directory check.
+	// Directories that never contain secrets.
+	// .git is handled separately via filepath.SkipDir for performance.
+	skipDirs := []string{
+		".git", "node_modules", "vendor", ".venv", "__pycache__",
+		".idea", ".vscode", "dist", "build", "target", ".terraform",
+	}
 	for _, dir := range skipDirs {
-		if strings.Contains(lower, string(filepath.Separator)+dir+string(filepath.Separator)) ||
-			strings.HasSuffix(lower, string(filepath.Separator)+dir) {
+		if strings.Contains(normalized, "/"+dir+"/") ||
+			strings.HasSuffix(normalized, "/"+dir) ||
+			strings.HasPrefix(normalized, dir+"/") ||
+			normalized == dir {
 			return true
 		}
 	}
 
-	// Extension check.
+	// File extensions that are binary or non-secret files.
+	skipExts := []string{
+		".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+		".mp4", ".mp3", ".zip", ".tar", ".gz", ".exe", ".dll",
+		".pdf", ".woff", ".woff2", ".ttf", ".eot",
+	}
 	for _, ext := range skipExts {
-		if strings.HasSuffix(lower, ext) {
+		if strings.HasSuffix(normalized, ext) {
 			return true
 		}
 	}
