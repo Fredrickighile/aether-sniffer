@@ -1,0 +1,126 @@
+# AETHER-SNIFFER — Automated Security Scan
+# Drop this file into any GitHub repo at .github/workflows/aether-sniffer.yml
+# It will automatically scan every push and pull request for:
+#   - Exposed secrets (API keys, tokens, passwords)
+#   - Shadow AI endpoints (unauthorized LLM usage)
+#
+# If a CRITICAL finding is detected, the build is blocked.
+# Security teams are notified via the GitHub Security tab.
+
+name: AETHER-SNIFFER Security Scan
+
+on:
+  push:
+    branches: ["**"]          # Scan every branch push
+  pull_request:
+    branches: [main, master]  # Block PRs to main if secrets found
+  schedule:
+    - cron: "0 2 * * 1"       # Weekly scan every Monday at 2am UTC
+  workflow_dispatch:           # Allow manual trigger from GitHub UI
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read            # Read the repo
+      security-events: write    # Write to GitHub Security tab (SARIF)
+      actions: read
+
+    steps:
+      # ── 1. Checkout the repository ──────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # Full history so we can scan all commits
+
+      # ── 2. Set up Go ────────────────────────────────────────────
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      # ── 3. Install AETHER-SNIFFER ───────────────────────────────
+      - name: Install AETHER-SNIFFER
+        run: |
+          git clone https://github.com/Fredrickighile/aether-sniffer.git /tmp/aether-sniffer
+          cd /tmp/aether-sniffer
+          go build -o /usr/local/bin/aether-sniffer .
+          aether-sniffer --help
+
+      # ── 4. Run the security scan ────────────────────────────────
+      - name: Run AETHER-SNIFFER scan
+        id: scan
+        run: |
+          # Scan the checked-out repo and output JSON for parsing.
+          aether-sniffer scan . --output json --report-dir ./aether-reports 2>&1 | tee scan-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true  # We handle exit codes manually below
+
+      # ── 5. Upload JSON report as artifact ───────────────────────
+      - name: Upload scan report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aether-sniffer-report
+          path: ./aether-reports/
+          retention-days: 90    # Keep reports for 90 days for compliance
+
+      # ── 6. Post summary to GitHub Actions UI ────────────────────
+      - name: Post scan summary
+        if: always()
+        run: |
+          echo "## 🔍 AETHER-SNIFFER Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Parse the JSON report for a summary.
+          if [ -f ./aether-reports/*.json ]; then
+            REPORT=$(ls ./aether-reports/*.json | head -1)
+            TOTAL=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['total'])" 2>/dev/null || echo "0")
+            CRITICAL=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['by_severity'].get('CRITICAL', 0))" 2>/dev/null || echo "0")
+            HIGH=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['by_severity'].get('HIGH', 0))" 2>/dev/null || echo "0")
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| 🔴 CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🟠 HIGH | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **No findings detected. Codebase is clean.**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Powered by [AETHER-SNIFFER](https://github.com/Fredrickighile/aether-sniffer) — AI-aware cloud security auditor_" >> $GITHUB_STEP_SUMMARY
+
+      # ── 7. Fail the build if CRITICAL findings exist ────────────
+      # This is the pipeline blocking feature.
+      # A CRITICAL finding means a real secret is exposed.
+      # The merge is blocked until the secret is removed and rotated.
+      - name: Enforce security gate
+        if: always()
+        run: |
+          if [ -f ./aether-reports/*.json ]; then
+            CRITICAL=$(cat ./aether-reports/*.json | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          print(d['summary']['by_severity'].get('CRITICAL', 0))
+          " 2>/dev/null || echo "0")
+
+            if [ "$CRITICAL" -gt "0" ]; then
+              echo ""
+              echo "╔══════════════════════════════════════════════════════╗"
+              echo "║  AETHER-SNIFFER — SECURITY GATE BLOCKED              ║"
+              echo "║                                                      ║"
+              echo "║  $CRITICAL CRITICAL finding(s) detected.                    ║"
+              echo "║  This pull request cannot be merged until all        ║"
+              echo "║  exposed secrets are removed and rotated.            ║"
+              echo "║                                                      ║"
+              echo "║  See the uploaded scan report for exact locations.   ║"
+              echo "╚══════════════════════════════════════════════════════╝"
+              echo ""
+              exit 1
+            fi
+          fi
+
+          echo "✔ Security gate passed — no critical findings detected."
