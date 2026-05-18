@@ -15,6 +15,7 @@ import (
 	"github.com/Fredrickighile/aether-sniffer/internal/scanners/secrets"
 	"github.com/Fredrickighile/aether-sniffer/internal/scanners/shadowai"
 	"github.com/Fredrickighile/aether-sniffer/internal/tui"
+	"github.com/Fredrickighile/aether-sniffer/internal/report"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -143,11 +144,12 @@ func runScan(cmd *cobra.Command, args []string) error {
     }
 
 	case config.OutputPDF:
-		fmt.Fprintln(os.Stderr, "PDF output coming in Phase 3. Using JSON for now.")
-		w := output.NewJSONWriter(cfg.ReportDir, cfg.Version)
-		if err := w.Write(results, targetPath, startedAt); err != nil {
-			return fmt.Errorf("failed to write report: %w", err)
-		}
+    w := report.NewPDFReport(cfg.ReportDir, cfg.Version)
+    path, err := w.Generate(results, targetPath, startedAt)
+    if err != nil {
+        return fmt.Errorf("failed to generate PDF report: %w", err)
+    }
+    fmt.Fprintf(os.Stderr, "PDF report saved to: %s\n", path)
 	}
 
 	// Exit with code 1 if critical findings exist — enables CI/CD pipeline blocking.

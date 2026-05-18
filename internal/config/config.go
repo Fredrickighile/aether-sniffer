@@ -72,7 +72,7 @@ type Config struct {
 }
 
 // Version is set at build time. Default is "dev" for local builds.
-var Version = "dev"
+var Version = "0.5.0"
 
 // Load reads all configuration from viper (which merges CLI flags,
 // config file, and environment variables) and returns a validated Config.

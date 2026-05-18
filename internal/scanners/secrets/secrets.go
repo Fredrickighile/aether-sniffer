@@ -48,7 +48,7 @@ func init() {
 		{"OpenAI API Key", `sk-[a-zA-Z0-9]{20,}`, engine.SeverityCritical, "Revoke this key immediately at platform.openai.com/api-keys. Rotate all systems using it. Store new keys in a secrets manager (AWS Secrets Manager, HashiCorp Vault)."},
 		{"Anthropic API Key", `sk-ant-[a-zA-Z0-9\-]{20,}`, engine.SeverityCritical, "Revoke at console.anthropic.com. Audit usage logs for unauthorized calls. Never commit API keys to version control."},
 		{"AWS Access Key ID", `AKIA[0-9A-Z]{16}`, engine.SeverityCritical, "Immediately deactivate in AWS IAM console. Check CloudTrail for unauthorized activity in the last 90 days. Enable AWS GuardDuty."},
-		{"AWS Secret Access Key", `[a-zA-Z0-9/+]{40}`, engine.SeverityHigh, "Rotate AWS credentials immediately. Review IAM policies — apply least-privilege. Use IAM roles instead of long-lived keys."},
+		{"AWS Secret Access Key", `(?i)(aws_secret|secret_key|secretaccesskey)[\s]*[=:"\s]+[a-zA-Z0-9/+]{40}`, engine.SeverityHigh, "Rotate AWS credentials immediately. Review IAM policies - apply least-privilege. Use IAM roles instead of long-lived keys."},
 		{"GitHub Personal Access Token", `ghp_[a-zA-Z0-9]{36}`, engine.SeverityCritical, "Revoke at github.com/settings/tokens. Audit recent API activity. Enable GitHub secret scanning on all repos."},
 		{"GitHub OAuth Token", `gho_[a-zA-Z0-9]{36}`, engine.SeverityHigh, "Revoke the OAuth token and re-authorize the application with minimal scopes."},
 		{"GitHub Actions Token", `ghs_[a-zA-Z0-9]{36}`, engine.SeverityHigh, "Tokens are short-lived but rotate any associated secrets. Review workflow permissions."},
@@ -59,12 +59,12 @@ func init() {
 		{"Slack Bot Token", `xoxb-[0-9]{11}-[0-9]{11}-[a-zA-Z0-9]{24}`, engine.SeverityHigh, "Revoke at api.slack.com/apps. Audit bot activity logs. Use Slack's app-level tokens with minimal scopes."},
 		{"Slack Webhook URL", `hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+`, engine.SeverityMedium, "Rotate the webhook in your Slack app settings. Webhooks allow anyone to post to your channel."},
 		{"HuggingFace API Token", `hf_[a-zA-Z0-9]{34,}`, engine.SeverityHigh, "Revoke at huggingface.co/settings/tokens. HuggingFace tokens can access private models and datasets."},
-		{"Cohere API Key", `[a-zA-Z0-9]{40}`, engine.SeverityHigh, "Revoke at dashboard.cohere.com. AI API keys can incur significant costs if abused."},
+		{"Cohere API Key", `(?i)(cohere|co-)[\s]*[=:"\s]+[a-zA-Z0-9]{40}`, engine.SeverityHigh, "Revoke at dashboard.cohere.com. AI API keys can incur significant costs if abused."},
 		{"Generic Private Key Header", `-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`, engine.SeverityCritical, "Private keys must NEVER be committed. Revoke and regenerate the key pair. Use SSH agent or a hardware security module (HSM)."},
 		{"Bearer Token in Code", `[Aa]uthorization:\s*[Bb]earer\s+[a-zA-Z0-9\-_.~+/]+=*`, engine.SeverityHigh, "Remove hardcoded authorization headers. Tokens must be loaded from environment variables or a secrets manager at runtime."},
 		{"Database Connection String", `(postgres|mysql|mongodb|redis)://[a-zA-Z0-9]+:[^@\s]+@[^\s]+`, engine.SeverityCritical, "Rotate the database password immediately. Use a secrets manager. Restrict database network access to specific IP ranges."},
 		{"JWT Secret", `jwt[_\-\s]?secret[\s]*[=:]\s*["']?[a-zA-Z0-9+/]{16,}`, engine.SeverityHigh, "Rotate the JWT signing secret. All existing tokens are now compromised. Implement token rotation and short expiry."},
-		{"Twilio Auth Token", `[0-9a-f]{32}`, engine.SeverityMedium, "Rotate at console.twilio.com. Review message logs for unauthorized SMS/calls."},
+		{"Twilio Auth Token", `(?i)(twilio|auth_token)[\s]*[=:"\s]+[0-9a-f]{32}`, engine.SeverityMedium, "Rotate at console.twilio.com. Review message logs for unauthorized SMS/calls."},
 	}
 
 	for _, r := range raw {
