@@ -1,5 +1,5 @@
-// This file registers the `aether-sniffer cloud` sub-command.
-// It wires the AWS cloud auditor into the CLI.
+// Package root - cloud subcommand
+// Registers `aether-sniffer cloud` which audits AWS, Azure, and GCP.
 package root
 
 import (
@@ -18,64 +18,102 @@ import (
 
 var cloudCmd = &cobra.Command{
 	Use:   "cloud",
-	Short: "Audit AWS cloud infrastructure for misconfigurations",
-	Long: `Scan your AWS account for security misconfigurations including:
+	Short: "Audit AWS, Azure, or GCP cloud infrastructure for misconfigurations",
+	Long: `Scan your cloud account for security misconfigurations.
 
+Supports AWS, Azure, and GCP.
+
+AWS checks:
   - S3 buckets with public access enabled
-  - IAM access keys older than 90 days (CIS Benchmark violation)
+  - IAM access keys older than 90 days
   - Inactive IAM keys that should be deleted
-  - Over-privileged IAM users
+
+Azure checks:
+  - Storage accounts with public blob access
+  - Storage accounts allowing unencrypted HTTP
+  - Weak TLS versions (below 1.2)
+  - Shared key access that should use Azure AD
+
+GCP checks:
+  - GCS buckets accessible by allUsers or allAuthenticatedUsers
+  - Buckets without uniform access control
+  - Service account keys older than 90 days
 
 Examples:
-  # Scan AWS using default credentials and region
-  aether-sniffer cloud
+  # Scan AWS (uses ~/.aws/credentials automatically)
+  aether-sniffer cloud --provider aws --region ca-central-1
 
-  # Scan a specific region
-  aether-sniffer cloud --region ca-central-1
+  # Scan Azure (uses 'az login' automatically)
+  aether-sniffer cloud --provider azure --subscription YOUR_SUBSCRIPTION_ID
 
-  # Scan using a specific AWS CLI profile
-  aether-sniffer cloud --profile production
+  # Scan GCP (uses 'gcloud auth application-default login' automatically)
+  aether-sniffer cloud --provider gcp --project YOUR_PROJECT_ID
 
   # Output JSON for SIEM ingestion
-  aether-sniffer cloud --output json
-
-Required IAM permissions (read-only):
-  s3:ListAllMyBuckets, s3:GetBucketAcl, s3:GetBucketPublicAccessBlock
-  iam:ListUsers, iam:ListAccessKeys, iam:GetAccessKeyLastUsed
+  aether-sniffer cloud --provider aws --output json
 `,
 	RunE: runCloudScan,
 }
 
 func init() {
+	cloudCmd.Flags().StringP("provider", "p", "aws", "cloud provider: aws | azure | gcp")
 	cloudCmd.Flags().StringP("region", "r", "us-east-1", "AWS region to scan")
-	cloudCmd.Flags().StringP("profile", "p", "", "AWS CLI profile to use")
+	cloudCmd.Flags().String("profile", "", "AWS CLI profile to use")
+	cloudCmd.Flags().StringP("subscription", "s", "", "Azure subscription ID")
+	cloudCmd.Flags().StringP("project", "j", "", "GCP project ID")
 	rootCmd.AddCommand(cloudCmd)
 }
 
 func runCloudScan(cmd *cobra.Command, args []string) error {
+	provider, _ := cmd.Flags().GetString("provider")
 	region, _ := cmd.Flags().GetString("region")
 	profile, _ := cmd.Flags().GetString("profile")
+	subscription, _ := cmd.Flags().GetString("subscription")
+	project, _ := cmd.Flags().GetString("project")
 
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("configuration error: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "\n[AETHER-SNIFFER] Starting AWS cloud audit\n")
-	fmt.Fprintf(os.Stderr, "Region:  %s\n", region)
-	if profile != "" {
-		fmt.Fprintf(os.Stderr, "Profile: %s\n", profile)
-	}
-	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "\n[AETHER-SNIFFER] Starting cloud audit\n")
+	fmt.Fprintf(os.Stderr, "Provider: %s\n\n", provider)
 
 	orch := engine.New(cfg)
 	startedAt := time.Now()
+	target := provider
 
-	scanner := cloudscanner.New(region, profile)
-	orch.Submit(engine.Job{
-		ID:      "cloud-aws",
-		Execute: scanner.Scan,
-	})
+	switch provider {
+	case "aws":
+		s := cloudscanner.New(region, profile)
+		orch.Submit(engine.Job{ID: "cloud-aws", Execute: s.Scan})
+		target = fmt.Sprintf("AWS / %s", region)
+
+	case "azure":
+		if subscription == "" {
+			subscription = os.Getenv("AZURE_SUBSCRIPTION_ID")
+		}
+		if subscription == "" {
+			return fmt.Errorf("Azure subscription ID required — use --subscription flag or set AZURE_SUBSCRIPTION_ID")
+		}
+		s := cloudscanner.NewAzure(subscription)
+		orch.Submit(engine.Job{ID: "cloud-azure", Execute: s.Scan})
+		target = fmt.Sprintf("Azure / %s", subscription)
+
+	case "gcp":
+		if project == "" {
+			project = os.Getenv("GOOGLE_CLOUD_PROJECT")
+		}
+		if project == "" {
+			return fmt.Errorf("GCP project ID required — use --project flag or set GOOGLE_CLOUD_PROJECT")
+		}
+		s := cloudscanner.NewGCP(project)
+		orch.Submit(engine.Job{ID: "cloud-gcp", Execute: s.Scan})
+		target = fmt.Sprintf("GCP / %s", project)
+
+	default:
+		return fmt.Errorf("unknown provider %q — must be aws, azure, or gcp", provider)
+	}
 
 	ctx := context.Background()
 	results, err := orch.Run(ctx)
@@ -86,6 +124,9 @@ func runCloudScan(cmd *cobra.Command, args []string) error {
 	totalFindings := 0
 	for _, r := range results {
 		totalFindings += len(r.Findings)
+		if r.Err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", r.Err)
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "Cloud audit complete in %s — %d finding(s)\n\n",
@@ -94,9 +135,9 @@ func runCloudScan(cmd *cobra.Command, args []string) error {
 	switch cfg.Output {
 	case config.OutputJSON:
 		w := output.NewJSONWriter(cfg.ReportDir, cfg.Version)
-		return w.Write(results, fmt.Sprintf("aws:%s", region), startedAt)
+		return w.Write(results, target, startedAt)
 	case config.OutputTUI:
-		return tui.Run(fmt.Sprintf("AWS / %s", region), func() ([]engine.Result, time.Duration) {
+		return tui.Run(target, func() ([]engine.Result, time.Duration) {
 			return results, time.Since(startedAt)
 		})
 	default:
