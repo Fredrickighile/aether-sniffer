@@ -1,0 +1,48 @@
+# Automated release pipeline for AETHER-SNIFFER
+# Triggered when you push a version tag: git tag v0.2.0 && git push origin v0.2.0
+# GoReleaser builds binaries for all platforms and uploads them to GitHub Releases.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"   # Triggers on any tag starting with v (v0.1.0, v1.0.0, etc.)
+
+permissions:
+  contents: write   # Required to create GitHub releases and upload assets
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout full history (GoReleaser needs tags) ────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history required for changelog generation
+
+      # ── 2. Set up Go ────────────────────────────────────────────
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      # ── 3. Run GoReleaser ───────────────────────────────────────
+      # GoReleaser will:
+      #   1. Build binaries for Linux, Windows, macOS (amd64 + arm64)
+      #   2. Package them as .tar.gz (Linux/Mac) and .zip (Windows)
+      #   3. Generate SHA256 checksums
+      #   4. Create a GitHub Release with changelog
+      #   5. Upload all artifacts to the release
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,122 @@
+# GoReleaser configuration for AETHER-SNIFFER
+# This file tells GoReleaser how to build and distribute
+# official binaries for Windows, Mac, and Linux automatically.
+#
+# Triggered by: git tag v0.x.x && git push origin v0.x.x
+# Result: Binaries appear on GitHub Releases page for anyone to download.
+
+version: 2
+
+# Project metadata
+project_name: aether-sniffer
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - id: aether-sniffer
+    main: ./main.go
+    binary: aether-sniffer
+
+    # Build flags injecting version at compile time.
+    # This is how `aether-sniffer --help` shows the real version number.
+    ldflags:
+      - -s -w
+      - -X github.com/Fredrickighile/aether-sniffer/internal/config.Version={{.Version}}
+
+    # Target every major platform enterprises use.
+    goos:
+      - linux
+      - windows
+      - darwin   # macOS
+
+    goarch:
+      - amd64    # Intel/AMD 64-bit (most servers and desktops)
+      - arm64    # Apple Silicon M1/M2, AWS Graviton
+
+    # Exclude combinations that don't make sense.
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+    env:
+      - CGO_ENABLED=0   # Static binary — no C dependencies, runs anywhere.
+
+# Archive settings — how binaries are packaged for download.
+archives:
+  - id: aether-sniffer
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]    # Windows users expect .zip
+    files:
+      - README.md
+      - LICENSE
+
+# Generate checksums so users can verify downloads aren't tampered with.
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+# Changelog generated from git commits automatically.
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: "New Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Security"
+      regexp: "^security"
+      order: 2
+
+# GitHub Release settings.
+release:
+  github:
+    owner: Fredrickighile
+    name: aether-sniffer
+  draft: false
+  prerelease: auto   # Tags like v0.1.0-beta are marked as pre-release automatically.
+  name_template: "AETHER-SNIFFER {{.Version}}"
+  header: |
+    ## AETHER-SNIFFER {{.Version}}
+
+    The first AI-aware cloud security auditor.
+    Detects exposed secrets and Shadow AI endpoints in your codebase.
+
+    ### Quick Install
+
+    **Linux/macOS:**
+    ```bash
+    curl -sSL https://github.com/Fredrickighile/aether-sniffer/releases/download/{{.Tag}}/aether-sniffer_{{.Version}}_linux_amd64.tar.gz | tar xz
+    sudo mv aether-sniffer /usr/local/bin/
+    aether-sniffer scan .
+    ```
+
+    **Windows:** Download the `.zip` file below, extract, and run `aether-sniffer.exe scan .`
+
+  footer: |
+    ---
+    **Full documentation:** https://github.com/Fredrickighile/aether-sniffer
+    **Report a bug:** https://github.com/Fredrickighile/aether-sniffer/issues
+
+# Homebrew tap — lets Mac users install with `brew install aether-sniffer`
+# Uncomment this after you have 100+ GitHub stars.
+# brews:
+#   - repository:
+#       owner: Fredrickighile
+#       name: homebrew-tap
+#     homepage: https://github.com/Fredrickighile/aether-sniffer
+#     description: AI-aware cloud security auditor
