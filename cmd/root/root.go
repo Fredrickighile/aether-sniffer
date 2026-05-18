@@ -35,7 +35,7 @@ AETHER-SNIFFER v0.1.0 — The first AI-aware cloud security auditor.
 Detects exposed secrets, cloud misconfigs, and Shadow AI endpoints.
 Built for enterprise. Privacy-first. All scanning runs locally.
 
-Docs: https://github.com/fredthebuilder/aether-sniffer
+Docs: https://github.com/Fredrickighile/aether-sniffer
 `,
 	// SilenceUsage prevents cobra from printing usage on every error.
 	// Errors are handled cleanly by our own output layer.

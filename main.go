@@ -4,7 +4,7 @@
 
 package main
 
-import "github.com/fredthebuilder/aether-sniffer/cmd/root"
+import "github.com/Fredrickighile/aether-sniffer/cmd/root"
 
 func main() {
 	root.Execute()

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fredthebuilder/aether-sniffer/internal/engine"
+	"github.com/Fredrickighile/aether-sniffer/internal/engine"
 )
 
 // ScanReport is the top-level JSON structure written to disk and stdout.

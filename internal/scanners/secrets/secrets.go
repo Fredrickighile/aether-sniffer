@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fredthebuilder/aether-sniffer/internal/engine"
+	"github.com/Fredrickighile/aether-sniffer/internal/engine"
 )
 
 const (

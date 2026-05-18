@@ -9,12 +9,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/fredthebuilder/aether-sniffer/internal/config"
-	"github.com/fredthebuilder/aether-sniffer/internal/engine"
-	"github.com/fredthebuilder/aether-sniffer/internal/output"
-	"github.com/fredthebuilder/aether-sniffer/internal/scanners/secrets"
-	"github.com/fredthebuilder/aether-sniffer/internal/scanners/shadowai"
-	"github.com/fredthebuilder/aether-sniffer/internal/tui"
+	"github.com/Fredrickighile/aether-sniffer/internal/config"
+	"github.com/Fredrickighile/aether-sniffer/internal/engine"
+	"github.com/Fredrickighile/aether-sniffer/internal/output"
+	"github.com/Fredrickighile/aether-sniffer/internal/scanners/secrets"
+	"github.com/Fredrickighile/aether-sniffer/internal/scanners/shadowai"
+	"github.com/Fredrickighile/aether-sniffer/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

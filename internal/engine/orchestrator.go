@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fredthebuilder/aether-sniffer/internal/config"
+	"github.com/Fredrickighile/aether-sniffer/internal/config"
 	"golang.org/x/time/rate"
 )
 

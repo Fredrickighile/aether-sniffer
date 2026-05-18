@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fredthebuilder/aether-sniffer/internal/engine"
-	"github.com/fredthebuilder/aether-sniffer/internal/scanners/secrets"
+	"github.com/Fredrickighile/aether-sniffer/internal/engine"
+	"github.com/Fredrickighile/aether-sniffer/internal/scanners/secrets"
 )
 
 // aiEndpoint defines a known AI provider's API endpoint pattern.

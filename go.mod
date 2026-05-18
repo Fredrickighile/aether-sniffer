@@ -1,4 +1,4 @@
-module github.com/fredthebuilder/aether-sniffer
+module github.com/Fredrickighile/aether-sniffer
 
 go 1.26.3
 
