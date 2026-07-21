@@ -152,6 +152,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 		apiKey = os.Getenv("AETHER_API_KEY")
 	}
 
+	// Finally check saved config from aether-sniffer login.
+	if apiKey == "" {
+		if creds, err := config.LoadCredentials(); err == nil {
+			apiKey = creds.APIKey
+			dashURLFlag, _ := cmd.Flags().GetString("dashboard-url")
+			if dashURLFlag == "https://aether-sniffer-api.onrender.com" && creds.DashboardURL != "" {
+				_ = cmd.Flags().Set("dashboard-url", creds.DashboardURL)
+			}
+		}
+	}
+
 	if syncEnabled {
 		if apiKey == "" {
 			fmt.Fprintln(os.Stderr, "warning: --sync requires --api-key or AETHER_API_KEY env var. Skipping sync.")
