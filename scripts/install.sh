@@ -78,7 +78,7 @@ fi
 rm -rf "$TMP_DIR"
 
 echo ""
-echo "  ${GRAY}──────────────────────────────${RESET}"
+echo "  ${GRAY}──────────────────────────────${RESET}"q
 echo "  ${GREEN}✔ Aether Sniffer ${VERSION} installed${RESET}"
 echo ""
 echo "  ${GRAY}Get started:${RESET}"
