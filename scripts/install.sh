@@ -27,8 +27,7 @@ ARCH=$(uname -m)
 
 case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
-  aarch64) ARCH="arm64" ;;
-  armv7l)  ARCH="arm"   ;;
+  aarch64|arm64) ARCH="arm64" ;;
   *)
     echo "  ${RED}✗ Unsupported architecture: $ARCH${RESET}"
     exit 1
@@ -55,11 +54,18 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
+# GoReleaser file names use the version without the leading "v"
+VERSION_NUM="${VERSION#v}"
+
 echo "  ${GRAY}[2/3]${RESET} Downloading ${BINARY} ${VERSION} (${OS}/${ARCH}) ..."
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}_${OS}_${ARCH}.${EXT}"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}_${VERSION_NUM}_${OS}_${ARCH}.${EXT}"
 
 TMP_DIR=$(mktemp -d)
-curl -sSfL "$URL" | tar -xz -C "$TMP_DIR"
+if ! curl -sSfL "$URL" -o "$TMP_DIR/archive.tar.gz"; then
+  echo "  ${RED}✗ Download failed: $URL${RESET}"
+  exit 1
+fi
+tar -xzf "$TMP_DIR/archive.tar.gz" -C "$TMP_DIR"
 
 if [ ! -f "$TMP_DIR/$BINARY" ]; then
   echo "  ${RED}✗ Binary not found in archive. Please report this issue.${RESET}"
@@ -78,7 +84,7 @@ fi
 rm -rf "$TMP_DIR"
 
 echo ""
-echo "  ${GRAY}──────────────────────────────${RESET}"q
+echo "  ${GRAY}──────────────────────────────${RESET}"
 echo "  ${GREEN}✔ Aether Sniffer ${VERSION} installed${RESET}"
 echo ""
 echo "  ${GRAY}Get started:${RESET}"
