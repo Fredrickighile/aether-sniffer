@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Fredrickighile/aether-sniffer/internal/config"
+	"github.com/Fredrickighile/aether-sniffer/internal/engine"
+	
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/Fredrickighile/aether-sniffer/internal/engine"
 )
 
 // ── Colours ────────────────────────────────────────────────────────────────
@@ -235,7 +237,7 @@ func (m Model) View() string {
 // renderBanner renders the ASCII logo and version.
 func (m Model) renderBanner() string {
 	logo := styleBanner.Render("AETHER-SNIFFER") +
-		styleDim.Render(" v0.1.0  —  AI-aware cloud security auditor")
+		styleDim.Render(" v" + config.Version + "  —  AI-aware cloud security auditor")
 	sep := styleDim.Render(strings.Repeat("─", min(m.width-2, 60)))
 	return logo + "\n" + sep
 }
@@ -350,7 +352,7 @@ func (m Model) renderFindings() string {
 			sb.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Render(fix) + "\n")
 		}
 
-		sb.WriteString(styleDim.Render("   " + strings.Repeat("─", min(m.width-8, 54))) + "\n")
+		sb.WriteString(styleDim.Render("   "+strings.Repeat("─", min(m.width-8, 54))) + "\n")
 	}
 
 	if len(m.findings) > visible {

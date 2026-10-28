@@ -31,9 +31,9 @@ var rootCmd = &cobra.Command{
 ███████║██║ ╚████║██║██║     ██║     ███████╗██║  ██║
 ╚══════╝╚═╝  ╚═══╝╚═╝╚═╝     ╚═╝     ╚══════╝╚═╝  ╚═╝
 
-AETHER-SNIFFER v0.1.0 — The first AI-aware cloud security auditor.
-Detects exposed secrets, cloud misconfigs, and Shadow AI endpoints.
-Built for enterprise. Privacy-first. All scanning runs locally.
+AETHER-SNIFFER — The first AI-aware cloud security auditor.
+Detects exposed secrets and Shadow AI endpoints.
+All scanning runs locally.
 
 Docs: https://github.com/Fredrickighile/aether-sniffer
 `,
