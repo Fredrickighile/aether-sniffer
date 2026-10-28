@@ -1,1 +1,8 @@
 *.exe
+
+# Secrets and credentials: never commit
+.env
+.env.*
+*.env
+*.pem
+*.key
