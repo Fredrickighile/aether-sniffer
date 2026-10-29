@@ -34,8 +34,7 @@ var (
 var (
 	styleBanner = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorAccent).
-			PaddingBottom(1)
+			Foreground(colorAccent)
 
 	styleBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
