@@ -10,7 +10,7 @@ import (
 
 	"github.com/Fredrickighile/aether-sniffer/internal/config"
 	"github.com/Fredrickighile/aether-sniffer/internal/engine"
-	
+
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -133,6 +133,11 @@ type Model struct {
 
 	// Findings cache (flattened after scan)
 	findings []engine.Finding
+
+	// scanErrors holds one line per scanner that failed or timed out.
+	// If this is non-empty the scan is incomplete, so we must never
+	// claim the target is "clean".
+	scanErrors []string
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -186,9 +191,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.results = msg.Results
 		m.duration = msg.Duration
 		m.progPercent = 1.0
-		// Flatten findings.
+		// Flatten findings and collect scanner errors.
 		for _, r := range m.results {
 			m.findings = append(m.findings, r.Findings...)
+			if r.Err != nil {
+				m.scanErrors = append(m.scanErrors, fmt.Sprintf("%s: %v", r.JobID, r.Err))
+			}
 		}
 		return m, nil
 
@@ -223,9 +231,13 @@ func (m Model) View() string {
 	if m.done {
 		sb.WriteString(m.renderSummary())
 		sb.WriteString("\n")
+		if len(m.scanErrors) > 0 {
+			sb.WriteString(m.renderIncomplete())
+		}
 		if len(m.findings) > 0 {
 			sb.WriteString(m.renderFindings())
-		} else {
+		} else if len(m.scanErrors) == 0 {
+			// Only claim "clean" when every scanner finished without error.
 			sb.WriteString(m.renderClean())
 		}
 	}
@@ -237,7 +249,7 @@ func (m Model) View() string {
 // renderBanner renders the ASCII logo and version.
 func (m Model) renderBanner() string {
 	logo := styleBanner.Render("AETHER-SNIFFER") +
-		styleDim.Render(" v" + config.Version + "  —  AI-aware cloud security auditor")
+		styleDim.Render(" v"+config.Version+"  —  AI-aware cloud security auditor")
 	sep := styleDim.Render(strings.Repeat("─", min(m.width-2, 60)))
 	return logo + "\n" + sep
 }
@@ -254,8 +266,14 @@ func (m Model) renderStatus() string {
 
 	var statusLine string
 	if m.done {
-		statusLine = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).
-			Render("✔  Scan complete") +
+		label := "✔  Scan complete"
+		color := colorAccent
+		if len(m.scanErrors) > 0 {
+			label = "⚠  Scan incomplete"
+			color = colorHigh
+		}
+		statusLine = lipgloss.NewStyle().Foreground(color).Bold(true).
+			Render(label) +
 			styleDim.Render(fmt.Sprintf("  (%s)", elapsed))
 	} else {
 		spinner := lipgloss.NewStyle().Foreground(colorAccent).
@@ -297,13 +315,40 @@ func (m Model) renderSummary() string {
 		badges = append(badges, styleBadgeLow.Render(fmt.Sprintf(" LOW %d ", n)))
 	}
 	if len(badges) == 0 {
-		badges = append(badges, lipgloss.NewStyle().
-			Foreground(colorAccent).Bold(true).Render("✔  Clean"))
+		if len(m.scanErrors) > 0 {
+			badges = append(badges, lipgloss.NewStyle().
+				Foreground(colorHigh).Bold(true).Render("⚠  Incomplete — not verified clean"))
+		} else {
+			badges = append(badges, lipgloss.NewStyle().
+				Foreground(colorAccent).Bold(true).Render("✔  Clean"))
+		}
 	}
 
 	badgeLine := strings.Join(badges, "  ")
 	content := header + "\n" + badgeLine
 	return styleBox.Width(min(m.width-4, 62)).Render(content) + "\n"
+}
+
+// renderIncomplete warns that one or more scanners failed or timed out,
+// so zero findings does NOT mean the target is clean.
+func (m Model) renderIncomplete() string {
+	content := lipgloss.NewStyle().Bold(true).Foreground(colorHigh).
+		Render("⚠  Some scanners did not finish.") + "\n" +
+		styleDim.Render("   Zero findings does NOT mean the code is clean.")
+
+	shown := m.scanErrors
+	if len(shown) > 3 {
+		shown = shown[:3]
+	}
+	for _, e := range shown {
+		content += "\n" + styleDim.Render("   • "+e)
+	}
+	content += "\n" + styleDim.Render("   Scan a smaller target or raise AETHER_TIMEOUT.")
+
+	return styleBox.
+		BorderForeground(colorHigh).
+		Width(min(m.width-4, 62)).
+		Render(content) + "\n"
 }
 
 // renderFindings renders the scrollable findings list.
