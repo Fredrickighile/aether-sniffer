@@ -91,18 +91,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 	enableSecrets, _ := cmd.Flags().GetBool("secrets")
 	enableShadowAI, _ := cmd.Flags().GetBool("shadowai")
 
-	// expectedJobs counts how many scanners we submitted, so we can tell
-	// afterwards whether every one of them actually reported back.
-	expectedJobs := 0
+	// Track the name of every scanner we submit, so afterwards we can tell
+	// which ones never reported back.
+	var jobIDs []string
 
 	if enableSecrets {
-		expectedJobs++
+		jobIDs = append(jobIDs, "secrets-scanner")
 		s := secrets.New(targetPath)
 		orch.Submit(engine.Job{ID: "secrets-scanner", Execute: s.Scan})
 	}
 
 	if enableShadowAI {
-		expectedJobs++
+		jobIDs = append(jobIDs, "shadowai-scanner")
 		s := shadowai.New(targetPath)
 		orch.Submit(engine.Job{ID: "shadowai-scanner", Execute: s.Scan})
 	}
@@ -113,10 +113,24 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
-	// A scan is incomplete if it timed out, if any scanner returned an error,
-	// or if fewer scanners reported back than we started (a worker can exit
-	// on the deadline before picking up a queued job, producing no Result).
-	scanIncomplete := err == context.DeadlineExceeded || len(results) < expectedJobs
+	// A worker can exit at the deadline before picking up a queued job, so that
+	// scanner produces no Result at all. Add a failed Result for each missing
+	// scanner so the dashboard and JSON report show it instead of looking complete.
+	reported := map[string]bool{}
+	for _, r := range results {
+		reported[r.JobID] = true
+	}
+	for _, id := range jobIDs {
+		if !reported[id] {
+			results = append(results, engine.Result{
+				JobID: id,
+				Err:   fmt.Errorf("scanner did not run (scan stopped before it started)"),
+			})
+		}
+	}
+
+	// A scan is incomplete if it timed out or any scanner returned an error.
+	scanIncomplete := err == context.DeadlineExceeded
 	if err == context.DeadlineExceeded {
 		fmt.Fprintln(os.Stderr, "warning: scan timed out — partial results follow")
 	}
