@@ -25,10 +25,11 @@ jobs:
           fetch-depth: 0   # Full history required for changelog generation
 
       # ── 2. Set up Go ────────────────────────────────────────────
+      # Reads the Go version from go.mod so the two can never disagree.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
           cache: true
 
       # ── 3. Run GoReleaser ───────────────────────────────────────
