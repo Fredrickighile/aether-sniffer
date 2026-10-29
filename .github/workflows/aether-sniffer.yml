@@ -1,11 +1,16 @@
 # AETHER-SNIFFER — Automated Security Scan
-# Drop this file into any GitHub repo at .github/workflows/aether-sniffer.yml
-# It will automatically scan every push and pull request for:
-#   - Exposed secrets (API keys, tokens, passwords)
-#   - Shadow AI endpoints (unauthorized LLM usage)
+# Scans the checked-out working tree for exposed secrets and Shadow AI
+# endpoints, then fails the job if the scan finds CRITICAL issues or
+# cannot finish.
 #
-# If a CRITICAL finding is detected, the build is blocked.
-# Security teams are notified via the GitHub Security tab.
+# Exit codes from `aether-sniffer scan`:
+#   0 = completed, no CRITICAL findings  -> job passes
+#   1 = at least one CRITICAL finding     -> job fails
+#   2 = scan incomplete (timeout/error)   -> job fails (never trusted as clean)
+#
+# Note: this scans the files in the checkout, not git history.
+# To make a failing scan block merges, require the "Security Scan" check in
+# Settings > Branches > branch protection rules.
 
 name: AETHER-SNIFFER Security Scan
 
@@ -13,7 +18,7 @@ on:
   push:
     branches: ["**"]          # Scan every branch push
   pull_request:
-    branches: [main, master]  # Block PRs to main if secrets found
+    branches: [main, master]  # Scan PRs into main
   schedule:
     - cron: "0 2 * * 1"       # Weekly scan every Monday at 2am UTC
   workflow_dispatch:           # Allow manual trigger from GitHub UI
@@ -23,23 +28,18 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     permissions:
-      contents: read            # Read the repo
-      security-events: write    # Write to GitHub Security tab (SARIF)
-      actions: read
+      contents: read
 
     steps:
       # ── 1. Checkout the repository ──────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0        # Full history so we can scan all commits
 
       # ── 2. Set up Go ────────────────────────────────────────────
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-          cache: true
+          go-version: stable
 
       # ── 3. Install AETHER-SNIFFER ───────────────────────────────
       - name: Install AETHER-SNIFFER
@@ -49,78 +49,70 @@ jobs:
           go build -o /usr/local/bin/aether-sniffer .
           aether-sniffer --help
 
-      # ── 4. Run the security scan ────────────────────────────────
+      # ── 4. Run the scan and record its exit code ────────────────
+      # The report is written outside the checkout so the scan never reads it.
       - name: Run AETHER-SNIFFER scan
         id: scan
         run: |
-          # Scan the checked-out repo and output JSON for parsing.
-          aether-sniffer scan . --output json --report-dir ./aether-reports 2>&1 | tee scan-output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-        continue-on-error: true  # We handle exit codes manually below
+          mkdir -p "$RUNNER_TEMP/aether-reports"
+          set +e
+          aether-sniffer scan . --output json --report-dir "$RUNNER_TEMP/aether-reports" > /dev/null 2> "$RUNNER_TEMP/scan-log.txt"
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/scan-log.txt"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
-      # ── 5. Upload JSON report as artifact ───────────────────────
+      # ── 5. Upload the JSON report as an artifact ────────────────
       - name: Upload scan report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: aether-sniffer-report
-          path: ./aether-reports/
-          retention-days: 90    # Keep reports for 90 days for compliance
+          path: ${{ runner.temp }}/aether-reports/
+          if-no-files-found: ignore
+          retention-days: 90
 
-      # ── 6. Post summary to GitHub Actions UI ────────────────────
+      # ── 6. Post a summary to the Actions UI ─────────────────────
       - name: Post scan summary
         if: always()
         run: |
-          echo "## 🔍 AETHER-SNIFFER Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          code="${{ steps.scan.outputs.exit_code }}"
+          {
+            echo "## AETHER-SNIFFER Security Scan"
+            echo ""
+            case "$code" in
+              0) echo "✅ **Scan completed. No CRITICAL findings.**" ;;
+              1) echo "🔴 **CRITICAL findings detected. Gate blocked.**" ;;
+              2) echo "⚠️ **Scan incomplete. Results cannot be trusted.**" ;;
+              *) echo "⚠️ **Scan did not run correctly (exit code: ${code:-none}).**" ;;
+            esac
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # Parse the JSON report for a summary.
-          if [ -f ./aether-reports/*.json ]; then
-            REPORT=$(ls ./aether-reports/*.json | head -1)
-            TOTAL=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['total'])" 2>/dev/null || echo "0")
-            CRITICAL=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['by_severity'].get('CRITICAL', 0))" 2>/dev/null || echo "0")
-            HIGH=$(cat $REPORT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['by_severity'].get('HIGH', 0))" 2>/dev/null || echo "0")
-
-            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| 🔴 CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-            echo "| 🟠 HIGH | $HIGH |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ **No findings detected. Codebase is clean.**" >> $GITHUB_STEP_SUMMARY
+          REPORT=$(ls "$RUNNER_TEMP"/aether-reports/*.json 2>/dev/null | head -1)
+          if [ -n "$REPORT" ]; then
+            jq -r '"| Severity | Count |\n|---|---|\n| CRITICAL | \(.summary.by_severity.CRITICAL // 0) |\n| HIGH | \(.summary.by_severity.HIGH // 0) |\n| Total | \(.summary.total) |"' "$REPORT" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Powered by [AETHER-SNIFFER](https://github.com/Fredrickighile/aether-sniffer) — AI-aware cloud security auditor_" >> $GITHUB_STEP_SUMMARY
-
-      # ── 7. Fail the build if CRITICAL findings exist ────────────
-      # This is the pipeline blocking feature.
-      # A CRITICAL finding means a real secret is exposed.
-      # The merge is blocked until the secret is removed and rotated.
+      # ── 7. Security gate: trust the scan's exit code ────────────
       - name: Enforce security gate
         if: always()
         run: |
-          if [ -f ./aether-reports/*.json ]; then
-            CRITICAL=$(cat ./aether-reports/*.json | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          print(d['summary']['by_severity'].get('CRITICAL', 0))
-          " 2>/dev/null || echo "0")
-
-            if [ "$CRITICAL" -gt "0" ]; then
-              echo ""
-              echo "╔══════════════════════════════════════════════════════╗"
-              echo "║  AETHER-SNIFFER — SECURITY GATE BLOCKED              ║"
-              echo "║                                                      ║"
-              echo "║  $CRITICAL CRITICAL finding(s) detected.                    ║"
-              echo "║  This pull request cannot be merged until all        ║"
-              echo "║  exposed secrets are removed and rotated.            ║"
-              echo "║                                                      ║"
-              echo "║  See the uploaded scan report for exact locations.   ║"
-              echo "╚══════════════════════════════════════════════════════╝"
-              echo ""
+          code="${{ steps.scan.outputs.exit_code }}"
+          case "$code" in
+            0)
+              echo "✔ Security gate passed: scan completed with no CRITICAL findings."
+              ;;
+            1)
+              echo "✖ GATE BLOCKED: CRITICAL finding(s) detected. See the uploaded report for locations."
               exit 1
-            fi
-          fi
-
-          echo "✔ Security gate passed — no critical findings detected."
+              ;;
+            2)
+              echo "✖ GATE BLOCKED: the scan did not complete, so the code cannot be called clean."
+              exit 1
+              ;;
+            *)
+              echo "✖ GATE BLOCKED: the scan did not run correctly (exit code: ${code:-none})."
+              exit 1
+              ;;
+          esac
