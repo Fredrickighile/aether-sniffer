@@ -1,10 +1,10 @@
 # AETHER-SNIFFER
 
-> **The first AI-aware cloud security auditor.**
-> Detects exposed secrets, cloud misconfigurations, and Shadow AI in seconds.
+> **AI-aware secret and Shadow AI scanner.**
+> Finds exposed credentials and unauthorized AI API usage in your codebase.
 
 [![Release](https://img.shields.io/github/v/release/Fredrickighile/aether-sniffer?color=1D9E75)](https://github.com/Fredrickighile/aether-sniffer/releases)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](https://github.com/Fredrickighile/aether-sniffer/releases)
 [![CI](https://github.com/Fredrickighile/aether-sniffer/actions/workflows/aether-sniffer.yml/badge.svg)](https://github.com/Fredrickighile/aether-sniffer/actions)
@@ -13,11 +13,13 @@
 
 ## What is Shadow AI?
 
-Developers paste company data into ChatGPT, Claude, and Copilot every day without realising the risk.
-That data goes to third-party servers. In Canada, that violates PIPEDA. In Europe, it violates GDPR.
-IBM says Shadow AI adds **$670,000** to the cost of every data breach.
+Developers send company data to AI services like ChatGPT, Claude, and Copilot, often without approval.
+That data goes to third-party servers, which can create compliance exposure under privacy laws such as
+PIPEDA (Canada) and GDPR (EU). According to IBM's Cost of a Data Breach research, breaches involving
+unsanctioned AI tools cost more on average.
 
-**AETHER-SNIFFER is the only open-source tool that detects this.**
+AETHER-SNIFFER looks for the footprints of this in your code: hardcoded AI provider endpoints and
+the API keys that go with them.
 
 ---
 
@@ -27,49 +29,35 @@ IBM says Shadow AI adds **$670,000** to the cost of every data breach.
 aether-sniffer scan /path/to/project
 ```
 
-In one command it finds:
+- **Exposed secrets**: API keys, tokens, passwords, and private keys (20 credential patterns)
+- **Shadow AI**: hardcoded endpoints for 10 AI providers (OpenAI, Anthropic, Cohere, HuggingFace, and more)
+- **Cloud auditing (experimental)**: AWS, Azure and GCP storage and IAM checks. Implemented, but not yet verified against live cloud accounts. Use read-only credentials.
 
-- **Exposed secrets** — API keys, tokens, passwords, private keys (20+ types)
-- **Shadow AI** — unauthorized OpenAI, Anthropic, Cohere, HuggingFace endpoints in your code
-- **AWS misconfigurations** — public S3 buckets, stale IAM keys
-- **Azure misconfigurations** — public blob access, weak TLS, HTTP-only storage
-- **GCP misconfigurations** — public buckets, stale service account keys
+Results appear in an interactive terminal dashboard, as JSON for SIEMs and CI, or as a PDF report.
 
-Results are shown in a beautiful interactive terminal dashboard, exported as JSON for SIEMs, or generated as a professional PDF report for compliance teams.
-
----
-
-## Why AETHER-SNIFFER?
-
-| Feature | TruffleHog | Gitleaks | GitGuardian | **AETHER-SNIFFER** |
-|---|---|---|---|---|
-| Secret scanning | ✅ | ✅ | ✅ (paid) | ✅ |
-| Shadow AI detection | ❌ | ❌ | ❌ | ✅ **unique** |
-| AWS / Azure / GCP audit | ❌ | ❌ | ❌ | ✅ |
-| Interactive TUI dashboard | ❌ | ❌ | ❌ | ✅ |
-| PDF compliance report | ❌ | ❌ | ❌ | ✅ |
-| Single binary, no install | ❌ | ✅ | ❌ | ✅ |
-| Fully local, privacy-first | ✅ | ✅ | ❌ | ✅ |
-| Free and open source | ✅ | ✅ | ❌ | ✅ |
+**Limits to know about:** detection is pattern-based (regex plus entropy scoring), so it can miss secrets in unusual formats and can flag false positives. Shadow AI detection looks for hardcoded endpoint URLs, not SDK imports.
 
 ---
 
 ## Quick Install
 
-**Linux / macOS:**
+**Linux / macOS (one command):**
+
 ```bash
-curl -sSL https://github.com/Fredrickighile/aether-sniffer/releases/latest/download/aether-sniffer_linux_amd64.tar.gz | tar xz
-sudo mv aether-sniffer /usr/local/bin/
+curl -sSL https://raw.githubusercontent.com/Fredrickighile/aether-sniffer/main/scripts/install.sh | sh
 aether-sniffer scan .
 ```
 
 **Windows:**
-Download `aether-sniffer_windows_amd64.zip` from the [releases page](https://github.com/Fredrickighile/aether-sniffer/releases), extract, and run:
+Download the Windows `.zip` from the [releases page](https://github.com/Fredrickighile/aether-sniffer/releases)
+(named `aether-sniffer_<version>_windows_amd64.zip`), extract it, and run:
+
 ```
 aether-sniffer.exe scan .
 ```
 
-**Build from source:**
+**Build from source (requires Go 1.26.3 or newer):**
+
 ```bash
 git clone https://github.com/Fredrickighile/aether-sniffer.git
 cd aether-sniffer
@@ -82,30 +70,43 @@ go build -o aether-sniffer .
 ## Usage
 
 ### Scan a local codebase
+
 ```bash
-# Interactive TUI dashboard (default)
+# Interactive terminal dashboard (default)
 aether-sniffer scan /path/to/project
 
-# JSON output for SIEM (Splunk, Datadog, Elastic)
+# JSON output for SIEMs and CI
 aether-sniffer scan /path/to/project --output json
 
-# Professional PDF report for compliance teams
+# PDF report
 aether-sniffer scan /path/to/project --output pdf
 ```
 
-### Audit cloud infrastructure
+### Exit codes (for CI/CD)
+
+| Code | Meaning                                                                       |
+| ---- | ----------------------------------------------------------------------------- |
+| 0    | Scan completed, no CRITICAL findings                                          |
+| 1    | At least one CRITICAL finding                                                 |
+| 2    | Scan did not complete (timeout or scanner error). Results are not trustworthy |
+
+### Sync results to the web dashboard (optional)
+
 ```bash
-# AWS (uses ~/.aws/credentials automatically)
+aether-sniffer login
+aether-sniffer scan /path/to/project --sync
+```
+
+### Audit cloud infrastructure (experimental)
+
+```bash
 aether-sniffer cloud --provider aws --region ca-central-1
-
-# Azure (uses 'az login' automatically)
 aether-sniffer cloud --provider azure --subscription YOUR_SUBSCRIPTION_ID
-
-# GCP (uses 'gcloud auth application-default login' automatically)
 aether-sniffer cloud --provider gcp --project YOUR_PROJECT_ID
 ```
 
 ### CI/CD pipeline integration
+
 ```yaml
 name: AETHER-SNIFFER Security Scan
 on: [push, pull_request]
@@ -114,59 +115,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run AETHER-SNIFFER
-        run: |
-          curl -sSL https://github.com/Fredrickighile/aether-sniffer/releases/latest/download/aether-sniffer_linux_amd64.tar.gz | tar xz
-          ./aether-sniffer scan . --output json
+      - name: Install AETHER-SNIFFER
+        run: curl -sSL https://raw.githubusercontent.com/Fredrickighile/aether-sniffer/main/scripts/install.sh | sh
+      - name: Scan
+        run: aether-sniffer scan . --output json
 ```
+
+The step fails on exit code 1 (critical findings) or 2 (incomplete scan).
 
 ---
 
 ## Secret Types Detected
 
-| Category | Types |
-|---|---|
-| AI / LLM | OpenAI, Anthropic, Cohere, HuggingFace, Google Gemini, Mistral |
-| Cloud | AWS Access Key + Secret, Google API Key, Azure Storage Key |
-| Version Control | GitHub PAT, GitHub OAuth, GitHub Actions tokens |
-| Payments | Stripe live secret + publishable keys |
-| Communication | Slack bot tokens, Slack webhooks, Twilio auth tokens |
-| Database | PostgreSQL, MySQL, MongoDB, Redis connection strings |
-| Auth | JWT secrets, Bearer tokens, Private keys (RSA/EC/SSH) |
-
----
+| Category        | Types                                                                         |
+| --------------- | ----------------------------------------------------------------------------- |
+| AI / LLM        | OpenAI, Anthropic, Cohere, HuggingFace                                        |
+| Cloud           | AWS Access Key ID and Secret, Google API Key, Azure Storage connection string |
+| Version Control | GitHub personal, OAuth and Actions tokens                                     |
+| Payments        | Stripe live secret and publishable keys                                       |
+| Communication   | Slack bot tokens and webhooks, Twilio auth tokens                             |
+| Database        | PostgreSQL, MySQL, MongoDB, Redis connection strings                          |
+| Auth            | JWT secrets, Bearer tokens, private key headers (RSA/EC/SSH/DSA)              |
 
 ## Shadow AI Providers Detected
 
-`OpenAI` `Anthropic Claude` `Google Gemini` `Cohere` `HuggingFace` `Mistral` `Together AI` `Replicate` `LiteLLM Proxy` `Ollama`
+`OpenAI` `Anthropic` `Google Vertex AI / Gemini` `Cohere` `HuggingFace` `Mistral` `Together AI` `Replicate` `LiteLLM Proxy` `Ollama`
 
 ---
 
 ## Security Design
 
-- **Zero telemetry.** Nothing leaves your machine. Ever.
-- **Redacted matches.** Secrets never stored in full — always shown as `sk-a...6789`
-- **Report files are mode 0600.** Only the file owner can read them.
-- **Read-only cloud scanning.** The tool never modifies any cloud resource.
-- **Rate limited.** Cloud API calls throttled to prevent accidental self-DoS.
-- **Entropy scoring.** Shannon entropy filtering reduces false positives by ~80%.
-- **Lockfile exclusion.** go.sum, package-lock.json, yarn.lock always skipped.
+- **Scanning runs locally.** Your source code is never uploaded.
+- **Sync is opt-in.** Only if you use `--sync`, finding metadata is sent to the dashboard: file paths, titles, descriptions, severity, and redacted match previews.
+- **Redacted matches.** Secrets are never stored in full. Matches show only the first and last four characters, for example `AKIA...MPLE`.
+- **Report files are written with mode 0600** (owner-only on Linux and macOS).
+- **Entropy scoring.** Shannon entropy filtering removes low-randomness matches to reduce false positives.
+- **Skips noise.** Lockfiles (go.sum, package-lock.json, yarn.lock), `.git`, `node_modules`, binaries and files over 5 MB are skipped.
+- **Fails safe.** A scan that times out or loses a scanner exits with code 2 and never reports "clean".
+- **Cloud checks are read-only.** They only list and read resource settings.
 
 ---
 
 ## Roadmap
 
-- [x] Secrets scanner - 20+ credential types
-- [x] Shadow AI scanner - 10 AI providers
-- [x] Interactive Bubble Tea TUI dashboard
-- [x] JSON output - SIEM compatible
-- [x] AWS cloud auditor - S3, IAM
-- [x] Azure cloud auditor - Storage, TLS, ACL
-- [x] GCP cloud auditor - Buckets, Service Accounts
-- [x] PDF compliance report
-- [x] GitHub Actions CI/CD integration
-- [x] GoReleaser - Windows, Linux, macOS binaries
-- [ ] Web dashboard with team accounts (SaaS)
+- [x] Secrets scanner (20 credential patterns)
+- [x] Shadow AI scanner (10 AI providers)
+- [x] Interactive terminal dashboard
+- [x] JSON output for SIEMs
+- [x] PDF report
+- [x] Web dashboard with API-key sync
+- [x] GoReleaser binaries for Windows, Linux and macOS
+- [ ] Verify cloud auditors against live AWS, Azure and GCP accounts
+- [ ] Detect AI SDK imports (not just endpoint URLs)
+- [ ] Checksum verification in the installer
 - [ ] Scheduled scans with Slack alerts
 - [ ] YAML plugin system for custom rules
 
@@ -187,10 +188,10 @@ go build -o aether-sniffer .
 
 ## License
 
-Apache 2.0 - see [LICENSE](LICENSE)
+Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-*Built with Go · Bubble Tea · Lip Gloss · Designed for enterprise security teams*
+_Built with Go, Bubble Tea and Lip Gloss._
 
-*2026 Fred Ighile - github.com/Fredrickighile/aether-sniffer*
+_2026 Fred Ighile, github.com/Fredrickighile/aether-sniffer_
