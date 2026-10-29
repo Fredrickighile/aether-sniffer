@@ -40,6 +40,11 @@ Examples:
 
   # Scan and generate PDF compliance report
   aether-sniffer scan . --output pdf
+
+Exit codes:
+  0  scan completed, no critical findings
+  1  scan found at least one CRITICAL finding
+  2  scan did not complete (timeout or scanner error) - results are not trustworthy
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runScan,
@@ -86,12 +91,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 	enableSecrets, _ := cmd.Flags().GetBool("secrets")
 	enableShadowAI, _ := cmd.Flags().GetBool("shadowai")
 
+	// expectedJobs counts how many scanners we submitted, so we can tell
+	// afterwards whether every one of them actually reported back.
+	expectedJobs := 0
+
 	if enableSecrets {
+		expectedJobs++
 		s := secrets.New(targetPath)
 		orch.Submit(engine.Job{ID: "secrets-scanner", Execute: s.Scan})
 	}
 
 	if enableShadowAI {
+		expectedJobs++
 		s := shadowai.New(targetPath)
 		orch.Submit(engine.Job{ID: "shadowai-scanner", Execute: s.Scan})
 	}
@@ -101,6 +112,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil && err != context.DeadlineExceeded {
 		return fmt.Errorf("scan failed: %w", err)
 	}
+
+	// A scan is incomplete if it timed out, if any scanner returned an error,
+	// or if fewer scanners reported back than we started (a worker can exit
+	// on the deadline before picking up a queued job, producing no Result).
+	scanIncomplete := err == context.DeadlineExceeded || len(results) < expectedJobs
 	if err == context.DeadlineExceeded {
 		fmt.Fprintln(os.Stderr, "warning: scan timed out — partial results follow")
 	}
@@ -109,6 +125,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	for _, r := range results {
 		totalFindings += len(r.Findings)
 		if r.Err != nil {
+			scanIncomplete = true
 			fmt.Fprintf(os.Stderr, "warning: scanner %q encountered an error: %v\n", r.JobID, r.Err)
 		}
 	}
@@ -164,9 +181,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if syncEnabled {
-		if apiKey == "" {
+		switch {
+		case scanIncomplete:
+			// The dashboard API records every ingested scan as "complete",
+			// so syncing a partial scan would show a false "Clean" result.
+			fmt.Fprintln(os.Stderr, "warning: scan was incomplete — skipping dashboard sync so partial results are not shown as complete.")
+		case apiKey == "":
 			fmt.Fprintln(os.Stderr, "warning: --sync requires --api-key or AETHER_API_KEY env var. Skipping sync.")
-		} else {
+		default:
 			dashURL, _ := cmd.Flags().GetString("dashboard-url")
 			if err := syncToDashboard(results, targetPath, startedAt, apiKey, dashURL); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: dashboard sync failed: %v\n", err)
@@ -183,6 +205,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 				os.Exit(1)
 			}
 		}
+	}
+
+	// Exit with code 2 if the scan did not finish — "no findings" cannot be
+	// trusted, so CI/CD must fail safe instead of passing.
+	if scanIncomplete {
+		fmt.Fprintln(os.Stderr, "error: scan incomplete — results cannot be trusted (exit code 2)")
+		os.Exit(2)
 	}
 
 	return nil
