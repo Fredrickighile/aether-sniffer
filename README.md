@@ -35,7 +35,7 @@ aether-sniffer scan /path/to/project
 
 Results appear in an interactive terminal dashboard, as JSON for SIEMs and CI, or as a PDF report.
 
-**Limits to know about:** detection is pattern-based (regex plus entropy scoring), so it can miss secrets in unusual formats and can flag false positives. Shadow AI detection looks for hardcoded endpoint URLs, not SDK imports.
+**Limits to know about:** detection is pattern-based (regex plus entropy scoring), so it can miss secrets in unusual formats and can flag false positives. Shadow AI detection looks for hardcoded endpoint URLs, not SDK imports. The Linux and Windows installers have been tested; macOS binaries are built by the release pipeline but have not been tested yet.
 
 ---
 
@@ -48,13 +48,15 @@ curl -sSL https://raw.githubusercontent.com/Fredrickighile/aether-sniffer/main/s
 aether-sniffer scan .
 ```
 
-**Windows:**
-Download the Windows `.zip` from the [releases page](https://github.com/Fredrickighile/aether-sniffer/releases)
-(named `aether-sniffer_<version>_windows_amd64.zip`), extract it, and run:
+**Windows (PowerShell, one command):**
 
+```powershell
+irm https://raw.githubusercontent.com/Fredrickighile/aether-sniffer/main/scripts/install.ps1 | iex
 ```
-aether-sniffer.exe scan .
-```
+
+Then open a new terminal and run `aether-sniffer scan .`. The installer verifies the download's SHA-256 checksum, installs to your user folder (no admin rights needed), and adds the command to your PATH.
+
+Prefer to read the script first? Download the Windows `.zip` from the [releases page](https://github.com/Fredrickighile/aether-sniffer/releases) (named `aether-sniffer_<version>_windows_amd64.zip`) and extract it yourself.
 
 **Build from source (requires Go 1.26.3 or newer):**
 
@@ -165,9 +167,11 @@ The step fails on exit code 1 (critical findings) or 2 (incomplete scan).
 - [x] PDF report
 - [x] Web dashboard with API-key sync
 - [x] GoReleaser binaries for Windows, Linux and macOS
+- [x] One-command Windows installer with checksum verification
 - [ ] Verify cloud auditors against live AWS, Azure and GCP accounts
 - [ ] Detect AI SDK imports (not just endpoint URLs)
-- [ ] Checksum verification in the installer
+- [ ] Checksum verification in the Linux/macOS installer
+- [ ] Test the macOS binaries
 - [ ] Scheduled scans with Slack alerts
 - [ ] YAML plugin system for custom rules
 
