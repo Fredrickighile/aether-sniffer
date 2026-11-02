@@ -9,6 +9,7 @@ function Install-AetherSniffer {
     $Repo = "Fredrickighile/aether-sniffer"
     $Binary = "aether-sniffer"
     $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\aether-sniffer"
+    $InstalledExe = Join-Path $InstallDir "$Binary.exe"
     $Tmp = Join-Path ([IO.Path]::GetTempPath()) ("aether-sniffer-" + [guid]::NewGuid().ToString())
 
     Write-Host ""
@@ -59,7 +60,7 @@ function Install-AetherSniffer {
         if (-not $exe) { throw "$Binary.exe not found in the archive." }
 
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        Copy-Item $exe.FullName (Join-Path $InstallDir "$Binary.exe") -Force
+        Copy-Item $exe.FullName $InstalledExe -Force
 
         # Add to the user PATH if it is not there yet
         $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -76,6 +77,21 @@ function Install-AetherSniffer {
         Write-Host ""
         Write-Host "  ------------------------------"
         Write-Host "  Aether Sniffer $tag installed." -ForegroundColor Green
+
+        # Shadow check: warn if an older copy elsewhere on PATH would run instead.
+        $others = @(
+            Get-Command $Binary -All -CommandType Application -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Source |
+                Where-Object { $_ -ne $InstalledExe }
+        )
+        if ($others.Count -gt 0) {
+            Write-Host ""
+            Write-Host "  WARNING: another copy of $Binary was found on your PATH." -ForegroundColor Yellow
+            Write-Host "  It may run instead of the one just installed:" -ForegroundColor Yellow
+            foreach ($o in $others) { Write-Host "    $o" -ForegroundColor Yellow }
+            Write-Host "  Delete the old copy, then open a new terminal." -ForegroundColor Yellow
+        }
+
         Write-Host ""
         Write-Host "  Get started (open a NEW terminal if the command is not found):"
         Write-Host "  > aether-sniffer scan ." -ForegroundColor Magenta
