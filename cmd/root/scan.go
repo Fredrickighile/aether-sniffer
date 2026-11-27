@@ -294,10 +294,12 @@ func syncToDashboard(results []engine.Result, target string, duration time.Durat
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", apiKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	// A free-tier dashboard server can take up to a minute to wake from sleep,
+	// so wait longer than a normal request would.
+	client := &http.Client{Timeout: 90 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to reach dashboard: %w", err)
+		return fmt.Errorf("failed to reach dashboard (the free server may be waking up, wait a minute and retry): %w", err)
 	}
 	defer resp.Body.Close()
 
