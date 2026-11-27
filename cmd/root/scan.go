@@ -113,6 +113,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
+	// Measure the scan duration ONCE, right when scanning ends. Everything
+	// below (terminal summary, dashboard view, sync) reuses this value, so
+	// time spent reading the results is never counted as scan time.
+	scanDuration := time.Since(startedAt).Round(time.Millisecond)
+
 	// A worker can exit at the deadline before picking up a queued job, so that
 	// scanner produces no Result at all. Add a failed Result for each missing
 	// scanner so the dashboard and JSON report show it instead of looking complete.
@@ -145,7 +150,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Scan complete in %s — %d finding(s) found.\n\n",
-		time.Since(startedAt).Round(time.Millisecond), totalFindings)
+		scanDuration, totalFindings)
 
 	// Write output.
 	switch cfg.Output {
@@ -157,9 +162,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	case config.OutputTUI:
 		tuiResults := results
-		tuiStart := startedAt
 		err := tui.Run(targetPath, func() ([]engine.Result, time.Duration) {
-			return tuiResults, time.Since(tuiStart)
+			return tuiResults, scanDuration
 		})
 		if err != nil {
 			return fmt.Errorf("TUI error: %w", err)
@@ -204,7 +208,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(os.Stderr, "warning: --sync requires --api-key or AETHER_API_KEY env var. Skipping sync.")
 		default:
 			dashURL, _ := cmd.Flags().GetString("dashboard-url")
-			if err := syncToDashboard(results, targetPath, startedAt, apiKey, dashURL); err != nil {
+			if err := syncToDashboard(results, targetPath, scanDuration, apiKey, dashURL); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: dashboard sync failed: %v\n", err)
 			} else {
 				fmt.Fprintln(os.Stderr, "✔ Results synced to dashboard successfully")
@@ -233,7 +237,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 // syncToDashboard posts scan results to the Aether Sniffer dashboard API.
 // Uses the ingest endpoint which is API-key authenticated.
-func syncToDashboard(results []engine.Result, target string, startedAt time.Time, apiKey, dashURL string) error {
+// duration is the measured scan time, not the time spent viewing results.
+func syncToDashboard(results []engine.Result, target string, duration time.Duration, apiKey, dashURL string) error {
 	// Build severity counts.
 	bySeverity := map[string]int{}
 	total := 0
@@ -268,7 +273,7 @@ func syncToDashboard(results []engine.Result, target string, startedAt time.Time
 
 	payload := map[string]interface{}{
 		"target":   target,
-		"duration": time.Since(startedAt).Round(time.Millisecond).String(),
+		"duration": duration.Round(time.Millisecond).String(),
 		"summary": map[string]interface{}{
 			"total":       total,
 			"by_severity": bySeverity,
