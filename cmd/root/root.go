@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Fredrickighile/aether-sniffer/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -15,8 +16,9 @@ var cfgFile string
 
 // rootCmd is the base command. Every sub-command is a child of this.
 var rootCmd = &cobra.Command{
-	Use:   "aether-sniffer",
-	Short: "AI-aware cloud security auditor",
+	Use:     "aether-sniffer",
+	Short:   "AI-aware cloud security auditor",
+	Version: config.Version,
 	Long: `
  █████╗ ███████╗████████╗██╗  ██╗███████╗██████╗
 ██╔══██╗██╔════╝╚══██╔══╝██║  ██║██╔════╝██╔══██╗
